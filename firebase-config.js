@@ -79,9 +79,19 @@ async function getAllTellersWithIds() {
 
 // Roster: Get roster for a specific date and team
 async function getRoster(team, dateStr) {
-    // team1Roster/{YYYY-MM-DD}
     const doc = await db.collection(`${team}Roster`).doc(dateStr).get();
     return doc.exists ? doc.data() : null;
+}
+
+// Optimized Monthly Roster Fetch
+async function getMonthlyRoster(team, monthStr) {
+    const startId = `${monthStr}-01`;
+    const endId = `${monthStr}-31`;
+    const snapshot = await db.collection(`${team}Roster`)
+        .where(firebase.firestore.FieldPath.documentId(), '>=', startId)
+        .where(firebase.firestore.FieldPath.documentId(), '<=', endId)
+        .get();
+    return snapshot.docs.map(doc => ({ date: doc.id, ...doc.data() }));
 }
 
 // Attendance: Get attendance for a specific date (all tellers)
@@ -154,6 +164,7 @@ window.FB = {
     getAllTellers,
     getAllTellersWithIds,
     getRoster,
+    getMonthlyRoster,
     getAttendanceForTeller,
     getMonthlyAttendance,
     saveAttendance
