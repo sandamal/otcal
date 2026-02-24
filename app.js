@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupAuthTabs();
     setupNav();
     setupAuthForms();
+    setupAdminTrigger();
 
     // Check Auth
     FB.auth.onAuthStateChanged(async (user) => {
@@ -141,23 +142,85 @@ function setupAuthForms() {
         const email = document.getElementById('signup-email').value;
         const pass = document.getElementById('signup-password').value;
 
-        const isAdmin = document.getElementById('signup-admin').checked;
         const data = {
-            tellerId,
             name: document.getElementById('signup-name').value,
             nick: document.getElementById('signup-nick').value,
-            team: document.getElementById('signup-team').value,
+            team: document.getElementById('signup-team').value || 'admin',
             mobile: document.getElementById('signup-mobile').value,
             pf: document.getElementById('signup-pf').value,
             basic: Number(document.getElementById('signup-basic').value),
-            role: isAdmin ? 'admin' : 'user'
+            role: 'user'
         };
 
         try {
             const userCredential = await FB.auth.createUserWithEmailAndPassword(email, pass);
             const user = userCredential.user;
-            await FB.db.collection('tellers').doc(tellerId).set({ ...data, uid: user.uid, createdAt: new Date() });
+
+            // Admin Key Validation
+            let role = 'user';
+            const adminKey = document.getElementById('signup-admin-key').value;
+            const MASTER_KEY = "ADMIN_2026_START"; // Hardcoded master key as planned
+
+            if (document.querySelector('.hidden-panel').classList.contains('active')) {
+                if (adminKey === MASTER_KEY) {
+                    role = 'admin';
+                } else {
+                    throw new Error("Invalid Admin Master Key");
+                }
+            }
+
+            // Use Teller ID if provided, otherwise use Firebase UID (for admins)
+            const finalDocId = (role === 'admin' && !tellerId) ? user.uid : tellerId;
+
+            await FB.db.collection('tellers').doc(finalDocId).set({
+                ...data,
+                tellerId: finalDocId,
+                role: role, // Override role from data based on key validation
+                uid: user.uid,
+                createdAt: new Date()
+            });
         } catch (err) { document.getElementById('signup-error').textContent = err.message; }
+    });
+}
+
+// ------------------- Admin enrollment -------------------
+function setupAdminTrigger() {
+    const trigger = document.querySelector('.secret-trigger');
+    if (!trigger) return;
+
+    let clickCount = 0;
+    let clickTimer = null;
+
+    trigger.addEventListener('click', () => {
+        clickCount++;
+        if (clickTimer) clearTimeout(clickTimer);
+
+        if (clickCount === 3) {
+            const container = document.querySelector('.auth-container');
+            const panel = document.getElementById('admin-enrollment');
+            const tellerIdInput = document.getElementById('signup-teller-id');
+            const teamInput = document.getElementById('signup-team');
+
+            container.classList.toggle('admin-mode');
+            panel.classList.toggle('active');
+
+            // Toggle Teller ID and Team requirement
+            if (container.classList.contains('admin-mode')) {
+                tellerIdInput.removeAttribute('required');
+                teamInput.removeAttribute('required');
+                tellerIdInput.value = ''; // Clear it
+                teamInput.value = ''; // Clear it
+            } else {
+                tellerIdInput.setAttribute('required', '');
+                teamInput.setAttribute('required', '');
+            }
+
+            clickCount = 0;
+        } else {
+            clickTimer = setTimeout(() => {
+                clickCount = 0;
+            }, 500);
+        }
     });
 }
 
@@ -189,10 +252,14 @@ async function loadAttendanceTable() {
         const attMap = new Map(attRecords.map(r => [r.date, r]));
         const team = viewTellerProfile?.team || 'team1';
 
+        // Optimized: Fetch entire month's roster at once
+        const rosterRecords = await FB.getMonthlyRoster(team, monthStr);
+        const rosterMap = new Map(rosterRecords.map(r => [r.date, r]));
+
         const rows = [];
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
-            const roster = await FB.getRoster(team, dateStr);
+            const roster = rosterMap.get(dateStr);
 
             let rosterEntry = null, isOff = false;
             if (roster) {
@@ -473,11 +540,15 @@ async function generateReport() {
     const attendanceRecords = await FB.getMonthlyAttendance(tellerId, monthStr);
     const attendanceMap = new Map(attendanceRecords.map(r => [r.date, r]));
 
+    // Optimized: Fetch entire month's roster at once
+    const rosterRecords = await FB.getMonthlyRoster(team, monthStr);
+    const rosterMap = new Map(rosterRecords.map(r => [r.date, r]));
+
     const records = [];
 
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
-        const roster = await FB.getRoster(team, dateStr);
+        const roster = rosterMap.get(dateStr);
         let att = attendanceMap.get(dateStr) || {};
 
         let shift = '-';
@@ -530,15 +601,20 @@ async function generateReport() {
     escalatedRecords.forEach(r => {
         const { status, workHours } = r;
 
+        // Count as Off Day if it's OFF or OFF (Worked)
         if (status === 'OFF' || status === 'OFF (Worked)') stats.off++;
-        else if (status === 'Mercantile Holiday') stats.mercantile++;
-        else if (status !== 'Absent') {
+
+        if (status === 'Mercantile Holiday') stats.mercantile++;
+
+        // Count as Working Day and add hours if they actually worked
+        // (Includes OFF (Worked) but excludes plain OFF, Absent, or Mercantile)
+        if (status !== 'Absent' && status !== 'OFF' && status !== 'Mercantile Holiday') {
             stats.working++;
             stats.totalWorkedHours += workHours;
             if (status.includes('Late')) stats.lates++;
             if (status.includes('Short')) stats.shorts++;
             if (status.includes('Half')) stats.halfs++;
-        } else {
+        } else if (status === 'Absent') {
             stats.leaveHours += 8; // Absent = 8H
         }
     });
@@ -736,7 +812,7 @@ function updateReportSummary() {
         let dayHasMercantile = false;
 
         statuses.forEach(status => {
-            if (status === 'OFF') {
+            if (status === 'OFF' || status === 'OFF (Worked)') {
                 if (!dayHasOff) { off++; dayHasOff = true; }
             }
             else if (status === 'Mercantile Holiday') {
