@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Attendance Manager v1</title>
+    <title>Roster - Attendance Manager</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e1e1e">
@@ -21,7 +21,7 @@
         <!-- Auth Container -->
         <div id="auth-view" class="view active">
             <div class="auth-container">
-                <h1>Toll Booth System</h1>
+                <h1 class="secret-trigger">Roster - Attendance Manager</h1>
                 <div class="tabs">
                     <button class="tab-btn active" data-target="login-form">Login</button>
                     <button class="tab-btn" data-target="signup-form">Sign Up</button>
@@ -49,7 +49,9 @@
                     <input type="text" id="signup-pf" placeholder="PF Number" required>
                     <input type="number" id="signup-basic" placeholder="Basic Salary" required>
                     <input type="password" id="signup-password" placeholder="Password" required>
-                    <label class="admin-check"><input type="checkbox" id="signup-admin"> Register as Admin</label>
+                    <div id="admin-enrollment" class="hidden-panel">
+                        <input type="password" id="signup-admin-key" placeholder="Admin Master Key">
+                    </div>
                     <div id="signup-error" class="error-msg"></div>
                     <button type="submit" class="primary-btn">Sign Up</button>
                 </form>
