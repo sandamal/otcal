@@ -1,6 +1,6 @@
 {
     "name": "Attendance Manager v1",
-    "short_name": "TollSys",
+    "short_name": "R-AM",
     "start_url": "./index.html",
     "display": "standalone",
     "background_color": "#1e1e1e",
@@ -18,3 +18,4 @@
         }
     ]
 }
+
